@@ -55,8 +55,8 @@ void init_system_timer(void) {
 }
 
 void init_joystick(void) {
-    P1SEL1 |= BIT1;                         // Configure P1.1 Pin for A1
-    P1SEL0 |= BIT1; 
+    P1SEL1 |= BIT0;                         // Configure P1.0 Pin for A0
+    P1SEL0 |= BIT0; 
 
     ADCCTL0 &= ~ADCSHT;                     // Clear ADCSHT from def. of ADCSHT=01
     ADCCTL0 |= ADCSHT_2;                    // Conversion Cycles = 16 (ADCSHT=10)
@@ -65,16 +65,16 @@ void init_joystick(void) {
     ADCCTL1 |= ADCSHP;                      // Sample signal source = sampling timer
     ADCCTL2 &= ~ADCRES;                     // Clear ADCRES from def. of ADCRES=01
     ADCCTL2 |= ADCRES_2;                    // Resolution = 12-bit (ADCRES = 10)
-    ADCMCTL0 |= ADCINCH_1;                  // ADC Input Channel = A1 (P1.1)
+    ADCMCTL0 |= ADCINCH_0;                  // ADC Input Channel = A0 (P1.0)
     ADCIE |= ADCIE0;                        // Enable ADC Conv Complete IRQ
     __enable_interrupt();                   // Enable interrupts
 }
 
 void init_push_button(void) {
-    P1DIR &= ~BIT0;                         // Config P1.0 as input
-    P1REN |= BIT0;                          // Enable resistor
-    P1OUT |= BIT0;                          // Make pull up resistor
-    P1IES |= BIT0;                          // Confug IRQ sensitivity H-to-L
+    P1DIR &= ~BIT1;                         // Config P1.1 as input
+    P1REN |= BIT1;                          // Enable resistor
+    P1OUT |= BIT1;                          // Make pull up resistor
+    P1IES |= BIT1;                          // Confug IRQ sensitivity H-to-L
     __enable_interrupt();                   // Enable interrupts
 }
 
@@ -186,7 +186,7 @@ __interrupt void Joystick_ISR(void){
 #pragma vector=PORT1_VECTOR
 __interrupt void Push_Button_ISR(void) {
     rotate = 1;
-    P1IFG &= ~BIT0;     
+    P1IFG &= ~BIT1;     
 }
 
 #pragma vector=EUSCI_B0_VECTOR
