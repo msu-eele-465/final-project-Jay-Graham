@@ -1,5 +1,6 @@
 #include <msp430.h>
 #include "i2c_utils.h"
+#include "led_screen.h"
 
 #define MAX_I2C_LEN 64
 
@@ -20,10 +21,55 @@ int main(void) {
 
     init_i2c_screen();
     init_i2c_matrix();
+    init_led_screen();
+    clear_display();
+
+    display_score(100);
 
     while (1) {
         __no_operation();
     }
+}
+
+void display_start_game() {
+    clear_screen();
+    draw_string(0, 1, "     MINI TETRIS     ");
+    draw_string(0, 4, "  CLICK JOYSTICK TO  ");
+    draw_string(0, 5, "        START        ");
+}
+
+void display_game_over() {
+    clear_screen();
+    draw_string(0, 1, "     MINI TETRIS     ");
+    draw_string(0, 4, "      GAME OVER      ");
+}
+
+void display_score(int score) {
+    clear_screen();
+    draw_string(0, 1, "     MINI TETRIS     ");
+    draw_string(0, 3, "       SCORE:        ");
+
+    char buffer[22];
+    int i = 0;
+
+    if (score >= 100) buffer[i++] = (score / 100) + '0';
+    else buffer[i++] = ' ';
+    if (score >= 10) buffer[i++] = ((score / 10) % 10) + '0';
+    else buffer[i++] = ' ';
+    buffer[i++] = (score % 10) + '0';
+
+    buffer[i++] = ' ';
+    buffer[i++] = 'P';
+    buffer[i++] = 'O';
+    buffer[i++] = 'I';
+    buffer[i++] = 'N';
+    buffer[i++] = 'T';
+    buffer[i++] = 'S';
+
+    while (i < 21) buffer[i++] = ' ';
+    buffer[i] = '\0';
+
+    draw_string(0, 5, buffer);
 }
 
 // ISR for screen (UCB0)
