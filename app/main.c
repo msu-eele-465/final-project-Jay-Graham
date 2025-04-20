@@ -75,6 +75,9 @@ void init_push_button(void) {
     P1REN |= BIT1;                          // Enable resistor
     P1OUT |= BIT1;                          // Make pull up resistor
     P1IES |= BIT1;                          // Confug IRQ sensitivity H-to-L
+
+    P1IFG &= ~BIT1;                         // clear interrupt flag
+    P1IE |= BIT1;                           // Enable P1.1 IRQ
     __enable_interrupt();                   // Enable interrupts
 }
 
@@ -87,7 +90,6 @@ void init_led_screen(void) {
     UCB0CTLW0 |= UCTR;                      // Put into Tx mode
     UCB0I2CSA = 0b01111000;                 // LED Screen address = 0b01111000
     UCB0CTLW1 |= UCASTP_2;                  // Auto STOP when UCB0TBCNT reached
-    UCB0TBCNT = sizeof(MAX_I2C_LEN);        // # of bytes in packet
 
     P1SEL1 &= ~BIT3;                        // P1.3 = SCL
     P1SEL0 |= BIT3;                            
@@ -109,7 +111,6 @@ void init_led_matrix(void) {
     UCB1CTLW0 |= UCTR;                      // Put into Tx mode
     UCB1I2CSA = 0x0070;                     // LED Matrix address = 0x70
     UCB1CTLW1 |= UCASTP_2;                  // Auto STOP when UCB0TBCNT reached
-    UCB1TBCNT = sizeof(MAX_I2C_LEN);        // # of bytes in packet
 
     P4SEL1 &= ~BIT7;                        // P4.7 = SCL
     P4SEL0 |= BIT7;                            
@@ -167,12 +168,13 @@ void i2c_write(int device, char data[], int len) {
 
 #pragma vector = TIMER0_B0_VECTOR
 __interrupt void System_Timer_ISR(void) {
+    ADCCTL0 |= ADCENC | ADCSC;
     TB0CCTL0 &= ~CCIFG;
 }
 
 #pragma vector=ADC_VECTOR
 __interrupt void Joystick_ISR(void){
-    adc_value = ADCMEM0;                    // read ADC value (start read w/ ADCCTL0 |= ADCENC | ADCSC;)
+    adc_value = ADCMEM0;                    // read ADC value
 
     if (adc_value < lower_bound) {          // (1.25V / 5V) * 4095 = 1023
         direction = left;
