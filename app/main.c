@@ -1,6 +1,6 @@
 #include <msp430.h>
-#include "i2c_utils.h"
 #include "led_screen.h"
+#include "led_matrix.h"
 
 #define MAX_I2C_LEN 64
 
