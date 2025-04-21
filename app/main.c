@@ -1,6 +1,7 @@
 #include <msp430.h>
 #include "i2c_utils.h"
 #include "led_screen.h"
+#include "joystick.h"
 
 int screen = 0;
 int matrix = 1;
@@ -12,10 +13,9 @@ int main(void) {
     init_i2c_screen();
     init_i2c_matrix();
     init_led_screen();
-    clear_screen();
+    init_joystick();
 
-    //display_start_game();
-    display_score(12);
+    display_start_game();
 
     while (1) {
         __no_operation();
