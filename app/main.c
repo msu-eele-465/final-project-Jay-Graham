@@ -1,15 +1,6 @@
 #include <msp430.h>
 #include "i2c_utils.h"
-
-#define MAX_I2C_LEN 64
-
-char Screen_Data_Buffer[MAX_I2C_LEN];
-int Screen_Data_Len = 0;
-int Screen_Data_Cnt = 0;
-
-char Matrix_Data_Buffer[MAX_I2C_LEN];
-int Matrix_Data_Len = 0;
-int Matrix_Data_Cnt = 0;
+#include "led_screen.h"
 
 int screen = 0;
 int matrix = 1;
@@ -20,6 +11,11 @@ int main(void) {
 
     init_i2c_screen();
     init_i2c_matrix();
+    init_led_screen();
+    clear_screen();
+
+    //display_start_game();
+    display_score(12);
 
     while (1) {
         __no_operation();
