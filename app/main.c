@@ -43,10 +43,11 @@ int main(void) {
     init_i2c_screen();
     init_i2c_matrix();
     init_led_screen();
-    //init_led_matrix();
+    init_led_matrix();
     init_inputs();
 
     display_start_game();
+    set_row(1, 0b11111111);
 
     while (1) {
     }
