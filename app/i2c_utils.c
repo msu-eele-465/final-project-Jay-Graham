@@ -1,16 +1,19 @@
 #include <msp430.h>
 #include "i2c_utils.h"
 
-char Screen_Data_Buffer[];
-int Screen_Data_Len;
-int Screen_Data_Cnt;
+#define MAX_I2C_LEN 64
 
-char Matrix_Data_Buffer[];
-int Matrix_Data_Len;
-int Matrix_Data_Cnt;
+char Screen_Data_Buffer[MAX_I2C_LEN];
+int Screen_Data_Len = 0;
+int Screen_Data_Cnt = 0;
+
+char Matrix_Data_Buffer[MAX_I2C_LEN];
+int Matrix_Data_Len = 0;
+int Matrix_Data_Cnt = 0;
 
 void i2c_write(int device, char data[], int len) {
     int i;
+    __disable_interrupt();
 
     switch (device) {
         case 0: // screen
@@ -33,6 +36,7 @@ void i2c_write(int device, char data[], int len) {
             UCB1CTLW0 |= UCTXSTT;
             break;
     }
+    __enable_interrupt();
 }
 
 void init_i2c_screen(void) {
@@ -63,4 +67,36 @@ void init_i2c_matrix(void) {
     UCB1CTLW0 &= ~UCSWRST;
     UCB1IE |= UCTXIE0;
     __enable_interrupt();
+}
+
+// ISR for screen (UCB0)
+#pragma vector=EUSCI_B0_VECTOR
+__interrupt void I2C_LED_SCREEN_ISR(void) {
+    switch (__even_in_range(UCB0IV, USCI_I2C_UCBIT9IFG)) {
+        case USCI_I2C_UCTXIFG0:
+            if (Screen_Data_Cnt < Screen_Data_Len)
+                UCB0TXBUF = Screen_Data_Buffer[Screen_Data_Cnt++];
+            else
+                UCB0IE &= ~UCTXIE0;
+            break;
+        case USCI_I2C_UCSTPIFG:
+            UCB0IFG &= ~UCSTPIFG;
+            break;
+    }
+}
+
+// ISR for matrix (UCB1)
+#pragma vector=EUSCI_B1_VECTOR
+__interrupt void MATRIX_I2C_ISR(void) {
+    switch (__even_in_range(UCB1IV, USCI_I2C_UCBIT9IFG)) {
+        case USCI_I2C_UCTXIFG0:
+            if (Matrix_Data_Cnt < Matrix_Data_Len)
+                UCB1TXBUF = Matrix_Data_Buffer[Matrix_Data_Cnt++];
+            else
+                UCB1IE &= ~UCTXIE0;
+            break;
+        case USCI_I2C_UCSTPIFG:
+            UCB1IFG &= ~UCSTPIFG;
+            break;
+    }
 }
