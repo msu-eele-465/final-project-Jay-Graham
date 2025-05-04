@@ -22,10 +22,11 @@ char game_field[16][8];
 int active_row = -1;       
 int active_col = 3;         
 int block_active = 0; 
-int ready_to_start = 0;
-int score = 0;
-int level = 1;
-int lines_cleared = 0;
+int rows_cleared = 0;
+int last_score = -1;
+int last_level = -1;
+int displayed_start = 0;
+int displayed_game_over = 0;
 
 // TETRIS GAME START
 #define STATE_START     0
@@ -40,6 +41,8 @@ int right_flag = 0;
 int adc_value = 2000;
 int lower_bound = 1000;
 int upper_bound = 3000;
+int level = 0;
+int score = 0;
 
 // ASCII-indexed 6x8 font
 static const unsigned char font6x8[][6] = {
@@ -60,6 +63,7 @@ static const unsigned char font6x8[][6] = {
     ['S'] = { 0x46,0x49,0x49,0x49,0x31,0x00 },
     ['T'] = { 0x01,0x01,0x7F,0x01,0x01,0x00 },
     ['V'] = { 0x1F,0x20,0x40,0x20,0x1F,0x00 },
+    ['Y'] = { 0x07,0x08,0x70,0x08,0x07,0x00 },
     ['0'] = { 0x3E,0x45,0x49,0x51,0x3E,0x00 },
     ['1'] = { 0x00,0x42,0x7F,0x40,0x00,0x00 },
     ['2'] = { 0x62,0x51,0x49,0x49,0x46,0x00 },
@@ -109,7 +113,7 @@ void init_i2c_matrix(void) {
 
 void init_game_timer(void) {
     TB0CTL |= (TBSSEL__ACLK | MC__UP | TBCLR);  
-    TB0CCR0 = 20000;                            
+    TB0CCR0 = 16000;                            
     TB0CCTL0 |= CCIE;                          
     TB0CCTL0 &= ~CCIFG;
     __enable_interrupt();                      
@@ -156,35 +160,47 @@ int main(void) {
     clear_game_field();
 
     while (1) {
-        if (game_state == STATE_START) {
-            if (pb_flag == 1) {
-                pb_flag = 0;
-                game_state = STATE_PLAYING;
-            }
-        } else if (game_state == STATE_GAME_OVER) {
-            score = 0;
-            lines_cleared = 0;
-            level = 1;
-            TB0CCR0 = 20000; 
-            display_game_over();
-            clear_matrix();
-            clear_game_field();
-            __delay_cycles(3000000);  // 3s delay
-            display_start_game();
-            game_state = STATE_START;
-        } else if (game_state == STATE_PLAYING) {
-            ADCCTL0 |= ADCENC | ADCSC;
-            if (lines_cleared >= 10 && lines_cleared < 20) {
-                level = 2;
-                TB0CCR0 = 18000;    
-            } else if (lines_cleared >= 20 && lines_cleared < 30) {
-                level = 3;
-                TB0CCR0 = 16000;    
-            } else if (lines_cleared >= 30) {
-                level = 4;
-                TB0CCR0 = 14000;
-            }
-            display_score();
+        ADCCTL0 |= ADCENC | ADCSC;
+
+        switch (game_state) {
+            case STATE_START:
+                if (!displayed_start) {
+                    display_start_game();
+                    displayed_start = 1;
+                }
+                if (pb_flag) {
+                    pb_flag = 0;
+                    score = 0;
+                    level = 1;
+                    rows_cleared = 0;
+                    last_score = -1;
+                    last_level = -1;
+                    clear_game_field();
+                    clear_matrix();
+                    game_state = STATE_PLAYING;
+                    TB0CCR0 = 16000;  // Level 1 speed
+                }
+                break;
+            case STATE_PLAYING:
+                if (score != last_score || level != last_level) {
+                    display_score();
+                    last_score = score;
+                    last_level = level;
+                }
+                break;
+            case STATE_GAME_OVER:
+                if (!displayed_game_over) {
+                    display_game_over();
+                    displayed_game_over = 1;
+                    __delay_cycles(3000000);
+                    displayed_start = 0;
+                    displayed_game_over = 0;
+                    pb_flag = 0;      
+                    left_flag = 0;
+                    right_flag = 0;
+                    game_state = STATE_START;
+                }
+                break;
         }
     }
 }
@@ -314,61 +330,68 @@ void int_to_str(int val, char* buf) {
 void display_score(void) {
     draw_string(0, 1, "     MINI TETRIS     ");
 
-    char score_num[10];
     char level_num[10];
-    int_to_str(score, score_num);
+    char score_num[10];
     int_to_str(level, level_num);
+    int_to_str(score, score_num);
 
-    char score_buf[22];
-    char level_buf[22];
-
-    const char* score_label = "SCORE: ";
     const char* level_label = "LEVEL: ";
+    const char* score_label = "SCORE: ";
 
-    // Create full strings: "SCORE: 123" etc.
-    char score_text[22], level_text[22];
-    int i = 0;
+    char level_text[22];
+    char score_text[22];
+    char level_buf[22];
+    char score_buf[22];
 
-    // Build score_text = "SCORE: 123"
-    while (score_label[i]) {
-        score_text[i] = score_label[i];
-        i++;
+    // Build score_text = "SCORE: xxx"
+    int si = 0;
+    while (score_label[si]) {
+        score_text[si] = score_label[si];
+        si++;
     }
-    int j = 0;
-    while (score_num[j]) {
-        score_text[i++] = score_num[j++];
+    int sj = 0;
+    while (score_num[sj]) {
+        score_text[si++] = score_num[sj++];
     }
-    score_text[i] = '\0';
+    score_text[si] = '\0';
+    int score_len = si;
 
-    // Build level_text = "LEVEL: 2"
-    i = 0;
-    while (level_label[i]) {
-        level_text[i] = level_label[i];
-        i++;
+    // Build level_text = "LEVEL: x"
+    int li = 0;
+    while (level_label[li]) {
+        level_text[li] = level_label[li];
+        li++;
     }
-    j = 0;
-    while (level_num[j]) {
-        level_text[i++] = level_num[j++];
+    int lj = 0;
+    while (level_num[lj]) {
+        level_text[li++] = level_num[lj++];
     }
-    level_text[i] = '\0';
+    level_text[li] = '\0';
+    int level_len = li;
 
-    // Center-align both strings
-    int score_len = i; // use from last loop
-    int score_pad = (21 - strlen(score_text)) / 2;
+    // Fill score_buf with spaces
+    int i;
+    for (i = 0; i < 21; i++) score_buf[i] = ' ';
+    score_buf[21] = '\0';
 
-    for (i = 0; i < score_pad; i++) score_buf[i] = ' ';
-    j = 0;
-    while (score_text[j] && i < 21) score_buf[i++] = score_text[j++];
-    score_buf[i] = '\0';
+    // Fill level_buf with spaces
+    for (i = 0; i < 21; i++) level_buf[i] = ' ';
+    level_buf[21] = '\0';
 
-    int level_pad = (21 - strlen(level_text)) / 2;
-    for (i = 0; i < level_pad; i++) level_buf[i] = ' ';
-    j = 0;
-    while (level_text[j] && i < 21) level_buf[i++] = level_text[j++];
-    level_buf[i] = '\0';
+    // Center align score_text
+    int score_pad = (21 - score_len) / 2;
+    for (i = 0; i < score_len; i++) {
+        score_buf[score_pad + i] = score_text[i];
+    }
 
-    draw_string(0, 5, score_buf);
+    // Center align level_text
+    int level_pad = (21 - level_len) / 2;
+    for (i = 0; i < level_len; i++) {
+        level_buf[level_pad + i] = level_text[i];
+    }
+
     draw_string(0, 4, level_buf);
+    draw_string(0, 5, score_buf);
 }
 
 // MATRIX INIT
@@ -425,36 +448,41 @@ void spawn_new_block(void) {
 }
 
 void drop_block(void) {
-    if (game_state != STATE_PLAYING) return;
-
+    // If no active block, check for top collision before spawning a new one
     if (!block_active) {
         if (game_field[15][3]) {
-            game_state = STATE_GAME_OVER;
             block_active = 0;
+            game_state = STATE_GAME_OVER;
             return;
         }
         spawn_new_block();
         return;
     }
 
+    // Handle left movement
     if (left_flag && active_col > 0 && !game_field[active_row][active_col - 1]) {
         game_field[active_row][active_col] = 0;
         active_col--;
         game_field[active_row][active_col] = 1;
         left_flag = 0;
-    } else if (right_flag && active_col < 7 && !game_field[active_row][active_col + 1]) {
+    }
+
+    // Handle right movement
+    else if (right_flag && active_col < 7 && !game_field[active_row][active_col + 1]) {
         game_field[active_row][active_col] = 0;
         active_col++;
         game_field[active_row][active_col] = 1;
         right_flag = 0;
     }
 
+    // If block cannot move down, lock it and check for row clears
     if (active_row == 0 || game_field[active_row - 1][active_col]) {
         block_active = 0;
         check_and_clear_rows();
         return;
     }
 
+    // Move block down by one row
     game_field[active_row][active_col] = 0;
     active_row--;
     game_field[active_row][active_col] = 1;
@@ -473,7 +501,8 @@ void clear_game_field(void) {
 }
 
 void check_and_clear_rows(void) {
-    int row, col, cleared = 0;
+    int row, col;
+    int cleared = 0;
 
     for (row = 0; row < 16; row++) {
         int full = 1;
@@ -485,30 +514,39 @@ void check_and_clear_rows(void) {
         }
 
         if (full) {
-            int r, c;
+            int r;
             for (r = row; r < 15; r++) {
-                for (c = 0; c < 8; c++) {
-                    game_field[r][c] = game_field[r + 1][c];
+                for (col = 0; col < 8; col++) {
+                    game_field[r][col] = game_field[r + 1][col];
                 }
             }
-            for (c = 0; c < 8; c++) game_field[15][c] = 0;
+            for (col = 0; col < 8; col++) game_field[15][col] = 0;
             cleared++;
-            row--;
+            row--;  // recheck this row
         }
     }
 
     if (cleared > 0) {
-        lines_cleared += cleared;
-        switch (cleared) {
-            case 1: score += 1 * level; break;
-            case 2: score += 3 * level; break;
-            case 3: score += 5 * level; break;
-            case 4: score += 8 * level; break;
-            default: score += cleared * level; break;
+        rows_cleared += cleared;
+
+        if (rows_cleared >= 20) level = 5;
+        else if (rows_cleared >= 15) level = 4;
+        else if (rows_cleared >= 10) level = 3;
+        else if (rows_cleared >= 5) level = 2;
+        else level = 1;
+
+        switch (level) {
+            case 1: score += 3 * cleared; TB0CCR0 = 16000; break;
+            case 2: score += 5 * cleared; TB0CCR0 = 14000; break;
+            case 3: score += 8 * cleared; TB0CCR0 = 12000; break;
+            case 4: score += 10 * cleared; TB0CCR0 = 10000; break;
+            case 5: score += 15 * cleared; TB0CCR0 = 8000; break;
         }
+
         update_matrix();
     }
 }
+
 
 // LED SCREEN I2C ISR
 #pragma vector=EUSCI_B0_VECTOR
@@ -544,7 +582,9 @@ __interrupt void MATRIX_I2C_ISR(void) {
 
 #pragma vector = TIMER0_B0_VECTOR
 __interrupt void Pattern_Transition_ISR(void) {
-    drop_block();
+    if (game_state == STATE_PLAYING) {
+        drop_block();
+    }
     TB0CCTL0 &= ~ CCIFG;           
 }
 
