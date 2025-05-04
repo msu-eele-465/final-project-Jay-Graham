@@ -2,21 +2,14 @@
 
 // I2C BUFFERS
 #define MAX_I2C_LEN 64
-
 char Screen_Data_Buffer[MAX_I2C_LEN];
 int Screen_Data_Len = 0;
 int Screen_Data_Cnt = 0;
 
-char Matrix_Data_Buffer[MAX_I2C_LEN];
-int Matrix_Data_Len = 0;
-int Matrix_Data_Cnt = 0;
-
 // I2C ADDRESSES
 #define SCREEN_I2C_ADDR 0x3C
-#define MATRIX_I2C_ADDR 0x70
-#define LED_MATRIX_DEVICE_ID 1
 
-// FONT TABLE
+// ASCII-indexed 6x8 font (only needed characters)
 static const unsigned char font6x8[][6] = {
     [' '] = { 0x00,0x00,0x00,0x00,0x00,0x00 },
     ['A'] = { 0x7C,0x12,0x11,0x12,0x7C,0x00 },
@@ -46,114 +39,58 @@ static const unsigned char font6x8[][6] = {
     ['9'] = { 0x26, 0x49, 0x49, 0x49, 0x3E, 0x00 }
 };
 
-// GLOBAL FLAGS
-int rotate_flag = 0;
-int left_flag = 0;
-int right_flag = 0;
-int adc_value = 3000;
-int lower_bound = 1000;
-int upper_bound = 4000;
-
-// INIT FUNCTIONS
+// I2C INIT
 void init_i2c_screen(void) {
     UCB0CTLW0 |= UCSWRST;
     UCB0CTLW0 |= UCSSEL__SMCLK | UCMODE_3 | UCMST | UCTR;
     UCB0BRW = 10;
     UCB0I2CSA = SCREEN_I2C_ADDR;
     UCB0CTLW1 |= UCASTP_2;
+
     P1SEL1 &= ~BIT3;
     P1SEL0 |=  BIT3;
     P1SEL1 &= ~BIT2;
     P1SEL0 |=  BIT2;
+
     UCB0CTLW0 &= ~UCSWRST;
     UCB0IE |= UCTXIE0;
     __enable_interrupt();
 }
 
-void init_i2c_matrix(void) {
-    UCB1CTLW0 |= UCSWRST;
-    UCB1CTLW0 |= UCSSEL__SMCLK | UCMODE_3 | UCMST | UCTR;
-    UCB1BRW = 10;
-    UCB1I2CSA = MATRIX_I2C_ADDR;
-    UCB1CTLW1 |= UCASTP_2;
-    P4SEL1 &= ~BIT7;
-    P4SEL0 |=  BIT7;
-    P4SEL1 &= ~BIT6;
-    P4SEL0 |=  BIT6;
-    UCB1CTLW0 &= ~UCSWRST;
-    UCB1IE |= UCTXIE0;
-    __enable_interrupt();
-}
-
-void init_inputs(void) {
-    P1SEL1 |= BIT0;
-    P1SEL0 |= BIT0;
-
-    ADCCTL0 &= ~ADCSHT;
-    ADCCTL0 |= ADCSHT_2;
-    ADCCTL0 |= ADCON;
-    ADCCTL1 |= ADCSSEL_2;
-    ADCCTL1 |= ADCSHP;
-    ADCCTL2 &= ~ADCRES;
-    ADCCTL2 |= ADCRES_2;
-    ADCMCTL0 |= ADCINCH_0;
-    ADCIE |= ADCIE0;
-
-    P1DIR &= ~BIT1;
-    P1REN |= BIT1;
-    P1OUT |= BIT1;
-    P1IES |= BIT1;
-    P1IFG &= ~BIT1;
-    P1IE |= BIT1;
-
-    __enable_interrupt();
-}
-
-// MAIN FUNCTION
+// MAIN
 int main(void) {
     WDTCTL = WDTPW | WDTHOLD;
     PM5CTL0 &= ~LOCKLPM5;
 
-    init_inputs();
     init_i2c_screen();
-    init_i2c_matrix();
     init_led_screen();
-    init_led_matrix();
 
+    __delay_cycles(1000000);
     display_start_game();
 
     while (1);
 }
 
-// I2C WRITE
-void i2c_write(int device, char *data, int len) {
+// BASIC I2C WRITE
+void i2c_write(char *data, int len) {
     int i;
     __disable_interrupt();
+    while (UCB0STATW & UCBBUSY);
+    while (UCB0CTLW0 & UCTXSTP);
 
-    if (device == 0) {
-        while (UCB0STATW & UCBBUSY);
-        while (UCB0CTLW0 & UCTXSTP);
-        for (i = 0; i < len; i++) Screen_Data_Buffer[i] = data[i];
-        Screen_Data_Len = len;
-        Screen_Data_Cnt = 0;
-        UCB0TBCNT = len;
-        UCB0IE |= UCTXIE0;
-        UCB0CTLW0 |= UCTXSTT;
-    } else {
-        while (UCB1STATW & UCBBUSY);
-        while (UCB1CTLW0 & UCTXSTP);
-        for (i = 0; i < len; i++) Matrix_Data_Buffer[i] = data[i];
-        Matrix_Data_Len = len;
-        Matrix_Data_Cnt = 0;
-        UCB1TBCNT = len;
-        UCB1IE |= UCTXIE0;
-        UCB1CTLW0 |= UCTXSTT;
+    for (i = 0; i < len && i < MAX_I2C_LEN; i++) {
+        Screen_Data_Buffer[i] = data[i];
     }
 
+    Screen_Data_Len = len;
+    Screen_Data_Cnt = 0;
+    UCB0TBCNT = len;
+    UCB0IE |= UCTXIE0;
+    UCB0CTLW0 |= UCTXSTT;
     __enable_interrupt();
 }
 
-// LED INIT
+// OLED INIT
 void init_led_screen(void) {
     static const char oled_init_cmds[] = {
         0x00, 0xAE, 0xD5, 0x80, 0xA8, 0x3F, 0xD3, 0x00,
@@ -161,56 +98,50 @@ void init_led_screen(void) {
         0x12, 0x81, 0xCF, 0xD9, 0xF1, 0xDB, 0x40, 0xA4,
         0xA6, 0xAF
     };
-    i2c_write(0, (char *)oled_init_cmds, sizeof(oled_init_cmds));
+    i2c_write((char *)oled_init_cmds, sizeof(oled_init_cmds));
 }
 
-void init_led_matrix(void) {
-    static const char matrix_init_cmds[][2] = {
-        { 0x00, 0x21 },  
-        { 0x00, 0x81 },  
-        { 0x00, 0xEF }   
-    };
-    int i;
-    for (i = 0; i < 3; i++) {
-        i2c_write(LED_MATRIX_DEVICE_ID, (char *)matrix_init_cmds[i], 2);
-    }
-}
-
-// OLED FUNCTIONS
+// CLEAR SCREEN
 void clear_screen(void) {
-    char set_range[] = {0x00, 0x21, 0x00, 0x7F, 0x22, 0x00, 0x07};
-    i2c_write(0, set_range, sizeof(set_range));
+    const char set_range[] = {
+        0x00, 0x21, 0x00, 0x7F,
+               0x22, 0x00, 0x07
+    };
+    i2c_write((char *)set_range, sizeof(set_range));
 
-    char buffer[65];
+    char buffer[33];
     buffer[0] = 0x40;
     int i;
-    for (i = 1; i < 65; i++) buffer[i] = 0x00;
-    int page;
-    for (page = 0; page < 8; page++) {
-        i2c_write(0, buffer, sizeof(buffer));
-        i2c_write(0, buffer, sizeof(buffer));
+    for (i = 1; i < 33; i++) buffer[i] = 0x00;
+
+    for (i = 0; i < 32; i++) {
+        while (UCB0STATW & UCBBUSY);
+        i2c_write(buffer, sizeof(buffer));
     }
 }
 
-void draw_string(int col, int page, const char *str) {
-    char buffer[1 + 6 * 21];
+// DRAW STRING
+void draw_string(char col, char page, const char *text) {
+    char buffer[7];
     buffer[0] = 0x40;
 
-    int i = 0;
-    int j = 0;
-    while (*str && i < 21) {
-        for (j = 0; j < 6; j++) {
-            buffer[1 + i * 6 + j] = font6x8[(int)*str][j];
-        }
-        str++;
-        i++;
-    }
+    while (*text) {
+        const unsigned char *glyph = font6x8[(int)*text];
+        int i;
+        for (i = 0; i < 6; i++) buffer[i + 1] = glyph ? glyph[i] : 0x00;
 
-    char set_cursor[] = { 0x00, 0x21, col, 127, 0x22, page, page };
-    i2c_write(0, set_cursor, sizeof(set_cursor));
-    i2c_write(0, buffer, 1 + i * 6);
+        char cmd[] = { 0x00, 0x21, col, col + 5, 0x22, page, page };
+        while (UCB0STATW & UCBBUSY);
+        i2c_write(cmd, sizeof(cmd));
+        while (UCB0STATW & UCBBUSY);
+        i2c_write(buffer, 7);
+
+        col += 6;
+        text++;
+    }
 }
 
+// DISPLAY START GAME
 void display_start_game(void) {
     clear_screen();
     draw_string(0, 1, "     MINI TETRIS     ");
@@ -218,28 +149,30 @@ void display_start_game(void) {
     draw_string(0, 5, "        START        ");
 }
 
+// DISPLAY GAME OVER
 void display_game_over(void) {
     clear_screen();
     draw_string(0, 1, "     MINI TETRIS     ");
     draw_string(0, 4, "      GAME OVER      ");
 }
 
+// DISPLAY SCORE
 void display_score(int score) {
     clear_screen();
     draw_string(0, 1, "     MINI TETRIS     ");
     draw_string(0, 4, "        SCORE        ");
 
     char buffer[22];
-    int j = 0;
+    int j;
     for (j = 0; j < 21; j++) buffer[j] = ' ';
     buffer[21] = '\0';
 
     if (score >= 100) {
-        buffer[9] = (score / 100) + '0';
-        buffer[10] = ((score / 10) % 10) + '0';
+        buffer[9]  = (score / 100) + '0';
+        buffer[10] = (score / 10) % 10 + '0';
         buffer[11] = (score % 10) + '0';
     } else if (score >= 10) {
-        buffer[10] = ((score / 10) % 10) + '0';
+        buffer[10] = (score / 10) % 10 + '0';
         buffer[11] = (score % 10) + '0';
     } else {
         buffer[11] = (score % 10) + '0';
@@ -248,31 +181,9 @@ void display_score(int score) {
     draw_string(0, 5, buffer);
 }
 
-// INTERRUPTS
-#pragma vector=ADC_VECTOR
-__interrupt void Joystick_ISR(void) {
-    adc_value = ADCMEM0;
-
-    if (adc_value < lower_bound) {
-        right_flag = 1;
-        left_flag = 0;
-    } else if (adc_value > upper_bound) {
-        left_flag = 1;
-        right_flag = 0;
-    } else {
-        right_flag = 0;
-        left_flag = 0;
-    }
-}
-
-#pragma vector=PORT1_VECTOR
-__interrupt void Push_Button_ISR(void) {
-    rotate_flag = 1;
-    P1IFG &= ~BIT1;
-}
-
+// I2C ISR
 #pragma vector=EUSCI_B0_VECTOR
-__interrupt void I2C_LED_SCREEN_ISR(void) {
+__interrupt void I2C_ISR(void) {
     switch (__even_in_range(UCB0IV, USCI_I2C_UCBIT9IFG)) {
         case USCI_I2C_UCTXIFG0:
             if (Screen_Data_Cnt < Screen_Data_Len)
@@ -282,21 +193,6 @@ __interrupt void I2C_LED_SCREEN_ISR(void) {
             break;
         case USCI_I2C_UCSTPIFG:
             UCB0IFG &= ~UCSTPIFG;
-            break;
-    }
-}
-
-#pragma vector=EUSCI_B1_VECTOR
-__interrupt void MATRIX_I2C_ISR(void) {
-    switch (__even_in_range(UCB1IV, USCI_I2C_UCBIT9IFG)) {
-        case USCI_I2C_UCTXIFG0:
-            if (Matrix_Data_Cnt < Matrix_Data_Len)
-                UCB1TXBUF = Matrix_Data_Buffer[Matrix_Data_Cnt++];
-            else
-                UCB1IE &= ~UCTXIE0;
-            break;
-        case USCI_I2C_UCSTPIFG:
-            UCB1IFG &= ~UCSTPIFG;
             break;
     }
 }
