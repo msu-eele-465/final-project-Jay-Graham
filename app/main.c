@@ -527,19 +527,15 @@ void check_and_clear_rows(void) {
         }
     }
 
-    if (cleared > 0) {
-        rows_cleared += cleared;
+    if (cleared) {
+        rows_cleared += 1;
+        score += 5*level;
 
-        if (rows_cleared >= 10) level = 4;
-        else if (rows_cleared >= 6) level = 3;
-        else if (rows_cleared >= 3) level = 2;
-        else level = 1;
-
-        switch (level) {
-            case 1: score += 5 * cleared; TB0CCR0 = 10000; break;
-            case 2: score += 10 * cleared; TB0CCR0 = 8500; break;
-            case 3: score += 15 * cleared; TB0CCR0 = 7000; break;
-            case 4: score += 30 * cleared; TB0CCR0 = 5500; break;
+        switch (rows_cleared) {
+            case 1: level = 2; TB0CCR0 = 7500; break;
+            case 2: level = 3; TB0CCR0 = 5000; break;
+            case 3: level = 4; TB0CCR0 = 2500; break;
+            default: level = 5; TB0CCR0 = 1000; break;
         }
 
         update_matrix();
