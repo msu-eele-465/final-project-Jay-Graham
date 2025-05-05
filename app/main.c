@@ -113,7 +113,7 @@ void init_i2c_matrix(void) {
 
 void init_game_timer(void) {
     TB0CTL |= (TBSSEL__ACLK | MC__UP | TBCLR);  
-    TB0CCR0 = 16000;                            
+    TB0CCR0 = 12000;                            
     TB0CCTL0 |= CCIE;                          
     TB0CCTL0 &= ~CCIFG;
     __enable_interrupt();                      
@@ -178,7 +178,7 @@ int main(void) {
                     clear_game_field();
                     clear_matrix();
                     game_state = STATE_PLAYING;
-                    TB0CCR0 = 16000;  // Level 1 speed
+                    TB0CCR0 = 12000;  // Level 1 speed
                 }
                 break;
             case STATE_PLAYING:
@@ -191,6 +191,7 @@ int main(void) {
             case STATE_GAME_OVER:
                 if (!displayed_game_over) {
                     display_game_over();
+                    clear_game_field();
                     displayed_game_over = 1;
                     __delay_cycles(3000000);
                     displayed_start = 0;
@@ -398,7 +399,7 @@ void display_score(void) {
 void init_led_matrix(void) {
     char setup1[] = { 0x21 };  // Turn on oscillator
     char setup2[] = { 0x81 };  // Display on, blink off
-    char setup3[] = { 0xEF };  // Brightness: max
+    char setup3[] = { 0xE1 };  // Brightness: max
 
     i2c_write(LED_MATRIX_DEVICE_ID, setup1, 1);
     __delay_cycles(10000);
@@ -529,18 +530,16 @@ void check_and_clear_rows(void) {
     if (cleared > 0) {
         rows_cleared += cleared;
 
-        if (rows_cleared >= 20) level = 5;
-        else if (rows_cleared >= 15) level = 4;
-        else if (rows_cleared >= 10) level = 3;
-        else if (rows_cleared >= 5) level = 2;
+        if (rows_cleared >= 10) level = 4;
+        else if (rows_cleared >= 6) level = 3;
+        else if (rows_cleared >= 3) level = 2;
         else level = 1;
 
         switch (level) {
-            case 1: score += 3 * cleared; TB0CCR0 = 16000; break;
-            case 2: score += 5 * cleared; TB0CCR0 = 14000; break;
-            case 3: score += 8 * cleared; TB0CCR0 = 12000; break;
-            case 4: score += 10 * cleared; TB0CCR0 = 10000; break;
-            case 5: score += 15 * cleared; TB0CCR0 = 8000; break;
+            case 1: score += 5 * cleared; TB0CCR0 = 10000; break;
+            case 2: score += 10 * cleared; TB0CCR0 = 8500; break;
+            case 3: score += 15 * cleared; TB0CCR0 = 7000; break;
+            case 4: score += 30 * cleared; TB0CCR0 = 5500; break;
         }
 
         update_matrix();
