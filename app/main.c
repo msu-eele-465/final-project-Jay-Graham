@@ -113,7 +113,7 @@ void init_i2c_matrix(void) {
 
 void init_game_timer(void) {
     TB0CTL |= (TBSSEL__ACLK | MC__UP | TBCLR);  
-    TB0CCR0 = 12000;                            
+    TB0CCR0 = 10000;                            
     TB0CCTL0 |= CCIE;                          
     TB0CCTL0 &= ~CCIFG;
     __enable_interrupt();                      
